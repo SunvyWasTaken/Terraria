@@ -13,6 +13,7 @@ find_package(raylib CONFIG REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
 
 add_subdirectory(Thirdparty/rlImGui)
+add_subdirectory(Thirdparty/FastNoiseSIMD)
 
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
@@ -33,7 +34,7 @@ endif()
 
 target_sources("${PROJECT_NAME}" PRIVATE ${MY_SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE raylib glfw rlImgui)
+target_link_libraries(${PROJECT_NAME} PRIVATE raylib glfw rlImgui fastNoiseSIMD)
 
 target_include_directories("${PROJECT_NAME}" PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src/gameLayer"

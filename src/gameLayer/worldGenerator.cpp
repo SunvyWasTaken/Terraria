@@ -2,11 +2,16 @@
 // Created by sunvy on 23/04/2026.
 //
 
+#include <FastNoiseSIMD.h>
+
 #include "worldGenerator.h"
+
+#include <memory>
 
 #include "gameMap.h"
 #include "random.h"
 
+#ifdef SINGEN
 #define NBRLAYER 32
 
 float Fbm(int val, std::vector<float>& frequencies, std::vector<float>& amplitudes)
@@ -80,3 +85,75 @@ void GenerateWorld (GameMap& gameMap, int seed)
         }
     }
 }
+#else
+
+void GenerateWorld (GameMap& gameMap, int seed)
+{
+    const int w = 900;
+    const int h = 500;
+
+    gameMap.Create(w, h);
+
+    // Create the noise.
+    std::unique_ptr<FastNoiseSIMD> dirtNoiseGenerator(FastNoiseSIMD::NewFastNoiseSIMD());
+    std::unique_ptr<FastNoiseSIMD> stoneNoiseGenerator(FastNoiseSIMD::NewFastNoiseSIMD());
+
+    // Set Seed
+    dirtNoiseGenerator->SetSeed(seed++);
+    stoneNoiseGenerator->SetSeed(seed++);
+
+    // Set parameter
+    dirtNoiseGenerator->SetNoiseType(FastNoiseSIMD::NoiseType::SimplexFractal);
+    dirtNoiseGenerator->SetFractalOctaves(2);
+    dirtNoiseGenerator->SetFrequency(0.02);
+
+    stoneNoiseGenerator->SetNoiseType(FastNoiseSIMD::NoiseType::SimplexFractal);
+    stoneNoiseGenerator->SetFractalOctaves(4);
+    stoneNoiseGenerator->SetFrequency(0.01);
+
+    /* Generate Noise with value.
+     * It's going to gen a 1D noise to represent the terrain height.
+     */
+    float* dirtNoise = FastNoiseSIMD::GetEmptySet(w); // SIMD use some spec alloc to be fast (wich I'm not using cuz linux -_-)
+    float* stoneNoise = FastNoiseSIMD::GetEmptySet(w);
+
+    dirtNoiseGenerator->FillNoiseSet(dirtNoise, 0, 0, 0, w, 1, 1);
+    stoneNoiseGenerator->FillNoiseSet(stoneNoise, 0, 0, 0, w, 1, 1);
+
+    for (int i = 0; i < w; ++i)
+    {
+        dirtNoise[i] = (dirtNoise[i] + 1) / 2;
+        stoneNoise[i] = (stoneNoise[i] + 1) / 2;
+    }
+
+    int dirtOffsetStart = -5;
+    int dirtOffsetEnd = 35;
+
+    int stoneHeightStart = 80;
+    int stoneHeightEnd = 170;
+
+    for (int x = 0; x < w; ++x)
+    {
+        int stoneHeight = stoneHeightStart + (stoneHeightEnd - stoneHeightStart) * stoneNoise[x];
+        int dirtHeight = dirtOffsetStart + (dirtOffsetEnd - dirtOffsetStart) * dirtNoise[x];
+        dirtHeight = stoneHeight - dirtHeight;
+
+        for (int y = 0; y < h; ++y)
+        {
+            Block block;
+            if (y > dirtHeight)
+                block.type = Block::dirt;
+            if (y == dirtHeight)
+                block.type = Block::grassBlock;
+            if (y >= stoneHeight)
+                block.type = Block::stone;
+
+            gameMap.GetBlockUnsafe(x, y) = block;
+        }
+    }
+
+    FastNoiseSIMD::FreeNoiseSet(dirtNoise);
+    FastNoiseSIMD::FreeNoiseSet(stoneNoise);
+}
+
+#endif

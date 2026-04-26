@@ -52,7 +52,7 @@ bool InitGame()
 
     GenerateWorld(gameData.gameMap, gameData.Seed);
 
-    gameData.camera.target = {0, 0};
+    gameData.camera.target = {20, 120};
     gameData.camera.rotation = 0.f;
     gameData.camera.zoom = 100.f;
 
