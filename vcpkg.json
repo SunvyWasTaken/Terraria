@@ -1,0 +1,9 @@
+{
+  "name" : "terraria",
+  "dependencies" : [ {
+    "name" : "imgui",
+    "features": ["docking-experimental", "glfw-binding"]
+  }, {
+    "name" : "raylib"
+  } ]
+}
