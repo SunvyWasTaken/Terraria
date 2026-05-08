@@ -11,27 +11,85 @@
 #include "gameMap.h"
 #include "random.h"
 
+#define SINGEN
+
 #ifdef SINGEN
 #define NBRLAYER 32
 
-float Fbm(int val, std::vector<float>& frequencies, std::vector<float>& amplitudes)
+struct Worm
 {
-    float value = 0;
-    for (int i = 0; i < frequencies.size(); ++i)
+private:
+    enum class Dir : int
     {
-        value += sin(val * frequencies[i]) * amplitudes[i];
-    }
-    return value;
-}
+        Up = 0,
+        Down,
+        FastUp,
+        FastDown,
+        Straight,
+        MAX
+    };
 
-float FbmCos(int val, std::vector<float>& frequencies, std::vector<float>& amplitudes)
-{
-    float value = 0;
-    for (int i = 0; i < frequencies.size(); ++i)
+public:
+
+    Worm(int l, int min, int max)
+        : layer(l), m_Min(min), m_Max(max)
+    {}
+
+    void Process(std::ranlux24_base& rng)
     {
-        value += cos(val * frequencies[i]) * amplitudes[i];
+        --m_NbrCountdown;
+        if (m_NbrCountdown <= 0)
+        {
+            m_Direction = static_cast<Dir>(GetRandomInt(rng, 0, static_cast<int>(Dir::MAX) - 1));
+            m_NbrCountdown = GetRandomInt(rng, 5, 15);
+        }
+
+        switch (m_Direction)
+        {
+            case Dir::Up:
+                layer += 1;
+                break;
+            case Dir::Down:
+                layer -= 1;
+                break;
+            case Dir::FastUp:
+                layer += 2;
+                break;
+            case Dir::FastDown:
+                layer -= 2;
+                break;
+            default:
+                break;
+        }
+
+        if (layer < m_Min)
+            layer = m_Min;
+        else if (layer > m_Max)
+            layer = m_Max;
     }
-    return value;
+
+    bool operator==(int i) const
+    {
+        return layer == i;
+    }
+
+    auto operator<=>(int i) const
+    {
+        return layer <=> i;
+    }
+
+    int layer = 0;
+
+private:
+    int m_Min = 0;
+    int m_Max = 0;
+    Dir m_Direction = Dir::Straight;
+    int8_t m_NbrCountdown = 0;
+};
+
+int operator+(int lhs, const Worm & rhs)
+{
+    return lhs + rhs.layer;
 }
 
 void GenerateWorld (GameMap& gameMap, int seed)
@@ -41,44 +99,59 @@ void GenerateWorld (GameMap& gameMap, int seed)
 
     gameMap.Create(w, h);
 
-    int stoneSize = 380;
-    int dirtSize = 50;
-
     std::ranlux24_base rng(seed);
 
-    std::vector<float> frequencies;
-    std::vector<float> amplitudes;
-    frequencies.reserve(NBRLAYER);
-    amplitudes.reserve(NBRLAYER);
+    Worm stoneLayer = {GetRandomInt(rng, 115, 200), 115, 200};
+    Worm dirtSize{GetRandomInt(rng, 100, 150), 100, 150};
 
-    for (int i = 0; i < NBRLAYER; ++i)
-        frequencies.emplace_back(GetRandomFloat(rng, 0.001, 0.09));
-
-    for (int i = 0; i < NBRLAYER; ++i)
-        amplitudes.emplace_back(GetRandomFloat(rng, 1, 1.5));
+    int desertStart = GetRandomInt(rng, 10, w - 210);
+    int desertEnd = desertStart + 100 + GetRandomInt(rng, 0, 100);
+    if (desertEnd > w)
+        desertEnd = w;
 
     for (int x = 0; x < w; ++x)
     {
-        dirtSize = 50 + Fbm(x, frequencies, amplitudes);
-        stoneSize = 380 + Fbm(x, frequencies, amplitudes);
+        dirtSize.Process(rng);
+        stoneLayer.Process(rng);
+
+        bool InDesert = (x >= desertStart && x <= desertEnd);
+
+        int grassType = Block::grassBlock;
+        int dirtType = Block::dirt;
+        int stoneType = Block::stone;
+
+        if (InDesert)
+        {
+            grassType = Block::sand;
+            dirtType = Block::sand;
+            stoneType = Block::sandStone;
+        }
 
         for (int y = 0; y < h; ++y)
         {
             Block block;
-            if (y < h - (dirtSize + stoneSize))
-            {}
-            else if (y == h - (dirtSize + stoneSize))
-                block.type = Block::grassBlock;
-            else if (y < h - stoneSize)
-                block.type = Block::dirt;
-            else
-            {
-                block.type = Block::stone;
 
-                if (GetRandomBool(rng, 0.1))
-                {
-                    block.type = Block::gold;
-                }
+            if (y == dirtSize && y < stoneLayer)
+                block.type = grassType;
+            else if (y > dirtSize && y < stoneLayer)
+                block.type = dirtType;
+            else if (y >= stoneLayer)
+                block.type = stoneType;
+
+            if (InDesert)
+            {
+                int desertMid = (desertStart + desertEnd) / 2;
+                int desertHalfWidth = (desertEnd - desertStart) / 2;
+                int distanceFromDesertMid = std::abs(x - desertMid);
+                float desertDistance = 1 - distanceFromDesertMid / float(desertHalfWidth);
+
+                int desertStoneStart = 10 + stoneLayer;
+                int desertStoneDepth = 20 + stoneLayer;
+
+                int triangleStoneY = desertStoneStart + desertDistance * desertStoneDepth;
+
+                if (y > triangleStoneY)
+                    block.type = Block::stone;
             }
 
             gameMap.GetBlockUnsafe(x, y) = block;

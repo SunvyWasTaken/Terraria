@@ -48,7 +48,8 @@ bool InitGame()
 {
     assetManager.LoadAll();
 
-    gameData.Seed = GetRandomInt(rng, 0, std::numeric_limits<int>::max());
+    //gameData.Seed = GetRandomInt(rng, 0, std::numeric_limits<int>::max());
+    gameData.Seed = 69;
 
     GenerateWorld(gameData.gameMap, gameData.Seed);
 
