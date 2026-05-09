@@ -14,95 +14,152 @@
 #define SINGEN
 
 #ifdef SINGEN
-#define NBRLAYER 32
 
-struct Worm
+namespace
 {
-private:
-    enum class Dir : int
+    int w = 900;
+    int h = 500;
+
+    struct WormLand
     {
-        Up = 0,
-        Down,
-        FastUp,
-        FastDown,
-        Straight,
-        MAX
+    private:
+        enum class Dir : int
+        {
+            Up = 0,
+            Down,
+            FastUp,
+            FastDown,
+            Straight,
+            MAX
+        };
+
+    public:
+
+        WormLand(int l, int min, int max)
+            : layer(l), m_Min(min), m_Max(max)
+        {}
+
+        void Process(std::ranlux24_base& rng)
+        {
+            --m_NbrCountdown;
+            if (m_NbrCountdown <= 0)
+            {
+                m_Direction = static_cast<Dir>(GetRandomInt(rng, 0, static_cast<int>(Dir::MAX) - 1));
+                m_NbrCountdown = GetRandomInt(rng, 5, 15);
+            }
+
+            switch (m_Direction)
+            {
+                case Dir::Up:
+                    layer += 1;
+                    break;
+                case Dir::Down:
+                    layer -= 1;
+                    break;
+                case Dir::FastUp:
+                    layer += 2;
+                    break;
+                case Dir::FastDown:
+                    layer -= 2;
+                    break;
+                default:
+                    break;
+            }
+
+            if (layer < m_Min)
+                layer = m_Min;
+            else if (layer > m_Max)
+                layer = m_Max;
+        }
+
+        bool operator==(int i) const
+        {
+            return layer == i;
+        }
+
+        auto operator<=>(int i) const
+        {
+            return layer <=> i;
+        }
+
+        int layer = 0;
+
+    private:
+        int m_Min = 0;
+        int m_Max = 0;
+        Dir m_Direction = Dir::Straight;
+        int8_t m_NbrCountdown = 0;
     };
 
-public:
-
-    Worm(int l, int min, int max)
-        : layer(l), m_Min(min), m_Max(max)
-    {}
-
-    void Process(std::ranlux24_base& rng)
+    int operator+(int lhs, const WormLand & rhs)
     {
-        --m_NbrCountdown;
-        if (m_NbrCountdown <= 0)
+        return lhs + rhs.layer;
+    }
+
+    struct NoiseCaves
+    {
+        std::unique_ptr<FastNoiseSIMD> NoiseValueGen;
+        float* NoiseValue = nullptr;
+        std::unique_ptr<FastNoiseSIMD> NoiseSimplexGen;
+        float* NoiseSimplex = nullptr;
+
+        explicit NoiseCaves(int seed)
         {
-            m_Direction = static_cast<Dir>(GetRandomInt(rng, 0, static_cast<int>(Dir::MAX) - 1));
-            m_NbrCountdown = GetRandomInt(rng, 5, 15);
+            NoiseValueGen = std::unique_ptr<FastNoiseSIMD>(FastNoiseSIMD::NewFastNoiseSIMD());
+            NoiseValueGen->SetSeed(++seed);
+            NoiseValueGen->SetNoiseType(FastNoiseSIMD::NoiseType::ValueFractal);
+            NoiseValueGen->SetFractalOctaves(3);
+            NoiseValueGen->SetFrequency(0.05f);
+
+            NoiseSimplexGen = std::unique_ptr<FastNoiseSIMD>(FastNoiseSIMD::NewFastNoiseSIMD());
+            NoiseSimplexGen->SetSeed(++seed);
+            NoiseSimplexGen->SetNoiseType(FastNoiseSIMD::NoiseType::SimplexFractal);
+            NoiseSimplexGen->SetFractalOctaves(3);
+            NoiseSimplexGen->SetFrequency(0.015f);
+
+            NoiseValue = FastNoiseSIMD::GetEmptySet(w * h);
+            NoiseValueGen->FillNoiseSet(NoiseValue, 0, 0, 0, h, w, 1);
+
+            for (int i = 0; i < w * h; ++i)
+                NoiseValue[i] = (NoiseValue[i] + 1) / 2;
+
+            NoiseSimplex = FastNoiseSIMD::GetEmptySet(w * h);
+            NoiseSimplexGen->FillNoiseSet(NoiseSimplex, 0, 0, 0, h, w, 1);
+
+            for (int i = 0; i < w * h; ++i)
+                NoiseSimplex[i] = (NoiseSimplex[i] + 1) / 2;
         }
 
-        switch (m_Direction)
+        ~NoiseCaves()
         {
-            case Dir::Up:
-                layer += 1;
-                break;
-            case Dir::Down:
-                layer -= 1;
-                break;
-            case Dir::FastUp:
-                layer += 2;
-                break;
-            case Dir::FastDown:
-                layer -= 2;
-                break;
-            default:
-                break;
+            FastNoiseSIMD::FreeNoiseSet(NoiseValue);
+            FastNoiseSIMD::FreeNoiseSet(NoiseSimplex);
         }
 
-        if (layer < m_Min)
-            layer = m_Min;
-        else if (layer > m_Max)
-            layer = m_Max;
-    }
+        float operator()(const int x, const int y) const
+        {
+            const int i = x + y * w;
+            return 1.f - (1.f - NoiseValue[i]) * (1.f - NoiseSimplex[i]);
+        }
+    };
+}
 
-    bool operator==(int i) const
-    {
-        return layer == i;
-    }
-
-    auto operator<=>(int i) const
-    {
-        return layer <=> i;
-    }
-
-    int layer = 0;
-
-private:
-    int m_Min = 0;
-    int m_Max = 0;
-    Dir m_Direction = Dir::Straight;
-    int8_t m_NbrCountdown = 0;
-};
-
-int operator+(int lhs, const Worm & rhs)
+void SetWorldSize(int width, int height)
 {
-    return lhs + rhs.layer;
+    w = width;
+    h = height;
 }
 
 void GenerateWorld (GameMap& gameMap, int seed)
 {
-    const int w = 900;
-    const int h = 500;
-
     gameMap.Create(w, h);
 
     std::ranlux24_base rng(seed);
 
-    Worm stoneLayer = {GetRandomInt(rng, 115, 200), 115, 200};
-    Worm dirtSize{GetRandomInt(rng, 100, 150), 100, 150};
+    WormLand stoneLayer = {GetRandomInt(rng, 115, 200), 115, 200};
+    WormLand dirtSize{GetRandomInt(rng, 100, 150), 100, 150};
+
+    const NoiseCaves CaveNoise{seed};
 
     int desertStart = GetRandomInt(rng, 10, w - 210);
     int desertEnd = desertStart + 100 + GetRandomInt(rng, 0, 100);
@@ -153,6 +210,9 @@ void GenerateWorld (GameMap& gameMap, int seed)
                 if (y > triangleStoneY)
                     block.type = Block::stone;
             }
+
+            if (CaveNoise(x, y) < 0.5)
+                block.type = Block::air;
 
             gameMap.GetBlockUnsafe(x, y) = block;
         }

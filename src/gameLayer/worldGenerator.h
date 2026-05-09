@@ -7,6 +7,8 @@
 
 struct GameMap;
 
+void SetWorldSize(int width, int height);
+
 void GenerateWorld (GameMap& gameMap, int seed);
 
 #endif //TERRARIA_WORLDGENERATOR_H
