@@ -4,6 +4,7 @@
 
 #include <format>
 #include <imgui.h>
+#include <imgui_stdlib.h>
 #include <raylib.h>
 #include <raymath.h>
 
@@ -14,6 +15,8 @@
 #include "helpers.h"
 #include "random.h"
 #include "rlImGui.h"
+#include "saveMap.h"
+#include "structure.h"
 #include "worldGenerator.h"
 
 namespace
@@ -28,7 +31,13 @@ namespace
         Camera2D camera;
         Block currentSelectBlock;
         Random noise;
-        uint32_t Seed = 0;
+        uint32_t Seed = 69;
+
+        Vector2 selectionStart = {};
+        Vector2 selectionEnd = {};
+        structure copyStructure;
+
+        std::string saveName{};
     }gameData;
 
     AssetManager assetManager;
@@ -42,6 +51,8 @@ namespace
     {
         gameData = {};
     }
+
+    bool IsImGuiHovered = false;
 }
 
 bool InitGame()
@@ -49,7 +60,6 @@ bool InitGame()
     assetManager.LoadAll();
 
     //gameData.Seed = GetRandomInt(rng, 0, std::numeric_limits<int>::max());
-    gameData.Seed = 69;
 
     GenerateWorld(gameData.gameMap, gameData.Seed);
 
@@ -68,29 +78,52 @@ bool UpdateGame()
 
     gameData.camera.offset = {GetScreenWidth() / 2.f, GetScreenHeight() / 2.f};
 
-    if (IsKeyDown(KEY_LEFT))
+    if (IsKeyDown(KEY_A))
         gameData.camera.target.x -= speed * dt;
-    if (IsKeyDown(KEY_RIGHT))
+    if (IsKeyDown(KEY_D))
         gameData.camera.target.x += speed * dt;
-    if (IsKeyDown(KEY_UP))
+    if (IsKeyDown(KEY_W))
         gameData.camera.target.y -= speed * dt;
-    if (IsKeyDown(KEY_DOWN))
+    if (IsKeyDown(KEY_S))
         gameData.camera.target.y += speed * dt;
 
     Vector2 worldPos = GetScreenToWorld2D(GetMousePosition(), gameData.camera);
     int blockX = (int)floor(worldPos.x);
     int blockY = (int)floor(worldPos.y);
 
-    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !IsImGuiHovered)
     {
         Block* block = gameData.gameMap.GetBlockSafe(blockX, blockY);
         if (block != nullptr)
             *block = {};
     }
 
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && !IsImGuiHovered)
         if (Block* block = gameData.gameMap.GetBlockSafe(blockX, blockY))
             block->type = gameData.currentSelectBlock.type;
+
+    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && !IsImGuiHovered)
+    {
+        if (Block* block = gameData.gameMap.GetBlockSafe(blockX, blockY))
+        {
+            gameData.currentSelectBlock.type = block->type;
+        }
+    }
+
+    gameData.camera.zoom += GetMouseWheelMove();
+
+    if (IsMouseButtonDown(MOUSE_BUTTON_EXTRA))
+        gameData.selectionStart = Vector2{(float)blockX, (float)blockY};
+    if (IsMouseButtonDown(MOUSE_BUTTON_SIDE))
+        gameData.selectionEnd = Vector2{(float)blockX, (float)blockY};
+
+    if (gameData.selectionStart.x > gameData.selectionEnd.x)
+        std::swap(gameData.selectionStart.x, gameData.selectionEnd.x);
+    if (gameData.selectionStart.y > gameData.selectionEnd.y)
+        std::swap(gameData.selectionStart.y, gameData.selectionEnd.y);
+
+    if (IsKeyDown(KEY_V))
+        gameData.copyStructure.pasteIntoMap(gameData.gameMap, Vector2{(float)blockX, (float)blockY});
 
     // Start rendering
     BeginMode2D(gameData.camera);
@@ -205,22 +238,72 @@ bool UpdateGame()
             }
         }
 
-    DrawTexturePro(
-        assetManager.Frame,
-        {0,0, (float)assetManager.Frame.width, (float)assetManager.Frame.height},
-        {(float)blockX, (float)blockY, 1, 1},
-        {},
-        0.f,
-        WHITE);
+    if (gameData.currentSelectBlock.type != Block::air && gameData.currentSelectBlock.type < Block::BLOCKS_COUNT)
+    {
+        DrawTexturePro(
+            assetManager.textures,
+            getTextureAtlas(gameData.currentSelectBlock.type, 0, 32, 32),
+            {(float)blockX, (float)blockY, 1, 1},
+            {},
+            0.f,
+            {255, 255, 255, 127});
+    }
+    else
+        DrawTexturePro(
+            assetManager.Frame,
+            {0,0, (float)assetManager.Frame.width, (float)assetManager.Frame.height},
+            {(float)blockX, (float)blockY, 1, 1},
+            {},
+            0.f,
+            WHITE);
+
+    Rectangle rect;
+    rect.x = gameData.selectionStart.x;
+    rect.y = gameData.selectionStart.y;
+    rect.width = gameData.selectionEnd.x - rect.x;
+    rect.height = gameData.selectionEnd.y - rect.y;
+
+    rect.width++;
+    rect.height++;
+
+    DrawRectangleLinesEx(rect, 0.1, {20, 101, 250, 145});
 
     EndMode2D();
 
     rlImGuiBegin();
 
     ImGui::Begin("Tools");
+    IsImGuiHovered = ImGui::IsWindowHovered() || ImGui::IsAnyItemHovered() || ImGui::IsAnyItemFocused();
     ImGui::DragFloat("Noise amplitude", &gameData.noise.amplitude, 0.001f, 0.001f);
     ImGui::SliderFloat("Zoom##1", &gameData.camera.zoom, 1.f, 100.f);
-    speed = Lerp(240, 7, gameData.camera.zoom / 100.f);
+    speed = Lerp(50, 7, gameData.camera.zoom / 100.f);
+
+    ImGui::Separator();
+
+    if (ImGui::Button("Copy"))
+    {
+        gameData.copyStructure.copyFromMap(gameData.gameMap, gameData.selectionStart, gameData.selectionEnd);
+    }
+
+    ImGui::InputText("File Name", &gameData.saveName);
+
+    if (ImGui::Button("Save to file"))
+    {
+        std::string path = RESOURCES_PATH "structures/";
+        path += gameData.saveName;
+        path += ".bin";
+
+        saveBlockDatatoFile(gameData.copyStructure.mapData, gameData.copyStructure.width, gameData.copyStructure.height, path);
+    }
+
+    if (ImGui::Button("Load from file"))
+    {
+        std::string path = RESOURCES_PATH "structures/";
+        path += gameData.saveName;
+        path += ".bin";
+
+        loadBlockDatatoFile(gameData.copyStructure.mapData, gameData.copyStructure.width, gameData.copyStructure.height, path);
+    }
 
     ImGui::Separator();
 

@@ -165,6 +165,12 @@ struct Block
         "snowBrickWall",
         "boneBrickWall"
     };
+
+    void sanitize()
+    {
+        if (type >= BLOCKS_COUNT)
+            type = 0;
+    }
 };
 
 #endif //TERRARIA_BLOCKS_H

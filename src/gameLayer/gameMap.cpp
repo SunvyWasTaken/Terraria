@@ -4,7 +4,7 @@
 
 #include "gameMap.h"
 
-#include <assert.h>
+#include <cassert>
 
 void GameMap::Create(int w, int h)
 {

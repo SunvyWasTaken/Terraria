@@ -7,6 +7,7 @@
 #include "worldGenerator.h"
 
 #include <memory>
+#include <bits/fs_fwd.h>
 
 #include "gameMap.h"
 #include "random.h"
@@ -142,6 +143,59 @@ namespace
             return 1.f - (1.f - NoiseValue[i]) * (1.f - NoiseSimplex[i]);
         }
     };
+
+    struct Worms
+    {
+        explicit Worms(GameMap& gameMap, std::ranlux24_base& rng, float PercentChance = 0.1, float x = -1.f, float y = -1.f)
+        {
+            if (x <= -1)
+                x = GetRandomFloat(rng, 10, w - 10);
+
+            if (y <= -1)
+                y = GetRandomFloat(rng, 10, h - 10);
+
+            float dirX = GetRandomFloat(rng, -1, 1);
+            float dirY = GetRandomFloat(rng, -1, 1);
+
+            int wormLength = GetRandomInt(rng, 100, 200);
+            float radius = GetRandomFloat(rng, 2, 5);
+
+            int changeDirectionTime = GetRandomInt(rng, 15, 20);
+            for (int j = 0; j < wormLength; ++j)
+            {
+                --changeDirectionTime;
+                if (changeDirectionTime <= 0)
+                {
+                    if (GetRandomFloat(rng, 0.f, 1.f) < PercentChance)
+                        Worms NewWorms{gameMap, rng, PercentChance / 4.f, x, y};
+
+                    changeDirectionTime = GetRandomInt(rng, 10, 20);
+                    dirX = GetRandomFloat(rng, -1, 1);
+                    dirY = GetRandomFloat(rng, -1, 1);
+                }
+
+                x += dirX;
+                y += dirY;
+
+                int intRadius = std::ceil(radius);
+                for (int ox = -intRadius; ox <= intRadius; ++ox)
+                {
+                    for (int oy = -intRadius; oy <= intRadius; ++oy)
+                    {
+                        float distSq = ox * ox + oy * oy;
+                        if (distSq <= radius * radius)
+                        {
+                            int digX = x + ox;
+                            int digY = y + oy;
+
+                            if (digY > 0 && digY < h - 1 && digX > 0 && digX < w - 1)
+                                gameMap.GetBlockUnsafe(digX, digY).type = Block::air;
+                        }
+                    }
+                }
+            }
+        }
+    };
 }
 
 void SetWorldSize(int width, int height)
@@ -216,6 +270,13 @@ void GenerateWorld (GameMap& gameMap, int seed)
 
             gameMap.GetBlockUnsafe(x, y) = block;
         }
+    }
+
+    const int NbrWorms = GetRandomInt(rng, 20, 30);
+
+    for (int i = 0; i < NbrWorms; ++i)
+    {
+        Worms worm{gameMap, rng};
     }
 }
 #else
