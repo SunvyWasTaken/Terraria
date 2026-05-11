@@ -9,12 +9,15 @@
 
 #include "blocks.h"
 
+enum class Biome;
+
 struct GameMap
 {
     int width = 0;
     int height = 0;
 
     std::vector<Block> mapData;
+    std::vector<Biome> biomeData;
     std::vector<Block> backgroundData;
 
     void Create(int w, int h);

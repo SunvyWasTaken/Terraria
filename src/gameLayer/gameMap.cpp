@@ -6,6 +6,8 @@
 
 #include <cassert>
 
+#include "WorldGen/Biome.h"
+
 void GameMap::Create(int w, int h)
 {
     *this = {}; // reset all the data
@@ -16,6 +18,10 @@ void GameMap::Create(int w, int h)
     mapData.resize(w * h);
     for (auto& b : mapData)
         b = {}; // clear all block data
+
+    biomeData.resize(w * h);
+    for (auto& b : biomeData)
+        b = Biome::Plains;
 
     backgroundData.resize(w * h);
     for (auto& b : backgroundData)

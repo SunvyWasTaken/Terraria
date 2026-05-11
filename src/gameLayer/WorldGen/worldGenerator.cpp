@@ -7,12 +7,15 @@
 #include "worldGenerator.h"
 
 #include <memory>
-#include <bits/fs_fwd.h>
 
-#include "gameMap.h"
-#include "random.h"
+#include "BiomeGen.h"
+#include "CaveGen.h"
+#include "LayerWorldGen.h"
+#include "TerrainGen.h"
+#include "../gameMap.h"
+#include "../random.h"
 
-#define SINGEN
+//#define SINGEN
 
 #ifdef SINGEN
 
@@ -78,7 +81,7 @@ namespace
             return layer == i;
         }
 
-        auto operator<=>(int i) const
+        std::strong_ordering operator<=>(int i) const
         {
             return layer <=> i;
         }
@@ -288,66 +291,18 @@ void GenerateWorld (GameMap& gameMap, int seed)
 
     gameMap.Create(w, h);
 
-    // Create the noise.
-    std::unique_ptr<FastNoiseSIMD> dirtNoiseGenerator(FastNoiseSIMD::NewFastNoiseSIMD());
-    std::unique_ptr<FastNoiseSIMD> stoneNoiseGenerator(FastNoiseSIMD::NewFastNoiseSIMD());
+    std::ranlux24_base rng(seed);
 
-    // Set Seed
-    dirtNoiseGenerator->SetSeed(seed++);
-    stoneNoiseGenerator->SetSeed(seed++);
+    std::vector<std::unique_ptr<LayerWorldGen>> layers;
 
-    // Set parameter
-    dirtNoiseGenerator->SetNoiseType(FastNoiseSIMD::NoiseType::SimplexFractal);
-    dirtNoiseGenerator->SetFractalOctaves(2);
-    dirtNoiseGenerator->SetFrequency(0.02);
+    layers.emplace_back(std::make_unique<BiomeGen>(w, h, seed));
+    layers.emplace_back(std::make_unique<TerrainGen>(w, h, rng));
+    layers.emplace_back(std::make_unique<CaveGen>(w, h, seed, rng));
 
-    stoneNoiseGenerator->SetNoiseType(FastNoiseSIMD::NoiseType::SimplexFractal);
-    stoneNoiseGenerator->SetFractalOctaves(4);
-    stoneNoiseGenerator->SetFrequency(0.01);
-
-    /* Generate Noise with value.
-     * It's going to gen a 1D noise to represent the terrain height.
-     */
-    float* dirtNoise = FastNoiseSIMD::GetEmptySet(w); // SIMD use some spec alloc to be fast (wich I'm not using cuz linux -_-)
-    float* stoneNoise = FastNoiseSIMD::GetEmptySet(w);
-
-    dirtNoiseGenerator->FillNoiseSet(dirtNoise, 0, 0, 0, w, 1, 1);
-    stoneNoiseGenerator->FillNoiseSet(stoneNoise, 0, 0, 0, w, 1, 1);
-
-    for (int i = 0; i < w; ++i)
+    for (auto& layer : layers)
     {
-        dirtNoise[i] = (dirtNoise[i] + 1) / 2;
-        stoneNoise[i] = (stoneNoise[i] + 1) / 2;
+        (*layer)(gameMap);
     }
-
-    int dirtOffsetStart = -5;
-    int dirtOffsetEnd = 35;
-
-    int stoneHeightStart = 80;
-    int stoneHeightEnd = 170;
-
-    for (int x = 0; x < w; ++x)
-    {
-        int stoneHeight = stoneHeightStart + (stoneHeightEnd - stoneHeightStart) * stoneNoise[x];
-        int dirtHeight = dirtOffsetStart + (dirtOffsetEnd - dirtOffsetStart) * dirtNoise[x];
-        dirtHeight = stoneHeight - dirtHeight;
-
-        for (int y = 0; y < h; ++y)
-        {
-            Block block;
-            if (y > dirtHeight)
-                block.type = Block::dirt;
-            if (y == dirtHeight)
-                block.type = Block::grassBlock;
-            if (y >= stoneHeight)
-                block.type = Block::stone;
-
-            gameMap.GetBlockUnsafe(x, y) = block;
-        }
-    }
-
-    FastNoiseSIMD::FreeNoiseSet(dirtNoise);
-    FastNoiseSIMD::FreeNoiseSet(stoneNoise);
 }
 
 #endif

@@ -17,7 +17,7 @@
 #include "rlImGui.h"
 #include "saveMap.h"
 #include "structure.h"
-#include "worldGenerator.h"
+#include "WorldGen/worldGenerator.h"
 
 namespace
 {
@@ -59,7 +59,7 @@ bool InitGame()
 {
     assetManager.LoadAll();
 
-    //gameData.Seed = GetRandomInt(rng, 0, std::numeric_limits<int>::max());
+    gameData.Seed = GetRandomInt(rng, 0, std::numeric_limits<int>::max());
 
     GenerateWorld(gameData.gameMap, gameData.Seed);
 
